@@ -35,6 +35,41 @@ async function run() {
         const galleryCollection = db.collection("gallery");
         const userCollection = db.collection("user");
         const bookingCollection = db.collection("bookings");
+        const sessionCollection = db.collection("session");
+
+        const verifyToken = async (req, res, next) => {
+            const authHeader = req.headers.authorization;
+            const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+            if (!token) {
+                return res.status(401).json({ message: "unauthorized access" });
+            }
+
+            try {
+                const session = await sessionCollection.findOne({ token });
+                if (!session) {
+                    return res.status(401).json({ message: "unauthorized access" });
+                }
+
+                const user = await userCollection.findOne({ _id: session.userId }); // userCollection, not usersCollection
+                if (!user) {
+                    return res.status(401).json({ message: "unauthorized access" });
+                }
+
+                req.user = user;
+                next();
+            } catch (err) {
+                console.error("verifyToken error:", err);
+                res.status(500).json({ message: "auth check failed" });
+            }
+        };
+
+        const verifyAdmin = async (req, res, next) => {
+            if (req.user?.role !== 'admin') {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+            next();
+        }
 
         app.get('/users', async (req, res) => {
             try {
@@ -49,7 +84,7 @@ async function run() {
             }
         });
 
-        app.patch('/users/:id/role', async (req, res) => {
+        app.patch('/users/:id/role', verifyToken, verifyAdmin, async (req, res) => {
             try {
                 const { id } = req.params;
                 const { role } = req.body;
@@ -74,7 +109,7 @@ async function run() {
             }
         });
 
-        app.delete('/users/:id', async (req, res) => {
+        app.delete('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
             try {
                 const { id } = req.params;
 
@@ -95,7 +130,7 @@ async function run() {
 
 
 
-        app.get('/analytics/overview', async (req, res) => {
+        app.get('/analytics/overview', verifyToken, verifyAdmin, async (req, res) => {
             try {
                 const totalUsers = await userCollection.countDocuments();
                 const totalAdmins = await userCollection.countDocuments({ role: 'admin' });
@@ -155,7 +190,7 @@ async function run() {
 
 
         // POST: Upload/Add new event/photo
-        app.post('/gallery', async (req, res) => {
+        app.post('/gallery', verifyToken, verifyAdmin, async (req, res) => {
             try {
                 const { title, description, category, isPaid, price, imageUrl } = req.body;
 
@@ -234,7 +269,7 @@ async function run() {
         });
 
         //  PUT: Update photo details by ID
-        app.put('/gallery/:id', async (req, res) => {
+        app.put('/gallery/:id', verifyToken, verifyAdmin, async (req, res) => {
             try {
                 const { id } = req.params;
 
@@ -277,7 +312,7 @@ async function run() {
         });
 
         // DELETE: Delete a photo by ID
-        app.delete('/gallery/:id', async (req, res) => {
+        app.delete('/gallery/:id', verifyToken, verifyAdmin, async (req, res) => {
             try {
                 const { id } = req.params;
 
@@ -303,8 +338,7 @@ async function run() {
 
 
         // bookings
-
-        app.post("/api/bookings", async (req, res) => {
+        app.post("/api/bookings", verifyToken, async (req, res) => {
             try {
                 const { fullName, email, phone, eventDate } = req.body;
 
@@ -338,7 +372,7 @@ async function run() {
         });
 
         // ADMIN — list all bookings, latest first
-        app.get("/api/bookings", async (req, res) => {
+        app.get("/api/bookings", verifyToken, verifyAdmin, async (req, res) => {
             try {
                 const bookings = await bookingCollection
                     .find()
@@ -353,7 +387,7 @@ async function run() {
         });
 
         // ADMIN — single booking detail
-        app.get("/api/bookings/:id", async (req, res) => {
+        app.get("/api/bookings/:id", verifyToken, verifyAdmin, async (req, res) => {
             try {
                 const { id } = req.params;
 
@@ -375,7 +409,7 @@ async function run() {
         });
 
         // ADMIN — update status (Pending / Confirmed / Cancelled / etc.)
-        app.patch("/api/bookings/:id", async (req, res) => {
+        app.patch("/api/bookings/:id", verifyToken, verifyAdmin, async (req, res) => {
             try {
                 const { id } = req.params;
                 const { status } = req.body;
@@ -406,7 +440,7 @@ async function run() {
         });
 
         // ADMIN — delete a booking
-        app.delete("/api/bookings/:id", async (req, res) => {
+        app.delete("/api/bookings/:id", verifyToken, verifyAdmin, async (req, res) => {
             try {
                 const { id } = req.params;
 
@@ -502,12 +536,11 @@ async function run() {
     }
 }
 
-run().catch(console.dir);
-
-
 app.get('/', (req, res) => {
-    res.send('Server is Serving...')
+    res.send('Server is Serving...');
 });
+
+run();
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
