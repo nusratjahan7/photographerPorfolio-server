@@ -250,6 +250,24 @@ app.get('/gallery', async (req, res) => {
     }
 });
 
+app.get('/gallery/features', async (req, res) => {
+    try {
+        const featuredGallery = await galleryCollection
+            .find()
+            .sort({ createdAt: -1 })
+            .limit(4)
+            .toArray();
+
+        res.status(200).json(featuredGallery);
+    } catch (error) {
+        console.error("Error fetching featured gallery:", error);
+        res.status(500).json({
+            success: false,
+            message: "Server error fetching featured gallery."
+        });
+    }
+});
+
 // GET: Fetch a single photo by ID
 app.get('/gallery/:id', async (req, res) => {
     try {
