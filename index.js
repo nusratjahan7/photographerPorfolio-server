@@ -41,32 +41,57 @@ const userCollection = db.collection("user");
 const bookingCollection = db.collection("bookings");
 const sessionCollection = db.collection("session");
 
+
+// const verifyToken = async (req, res, next) => {
+//     const authHeader = req.headers.authorization;
+//     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+//     if (!token) {
+//         return res.status(401).json({ message: "unauthorized access" });
+//     }
+
+//     try {
+//         const session = await sessionCollection.findOne({ token });
+//         if (!session) {
+//             return res.status(401).json({ message: "unauthorized access" });
+//         }
+
+//         const user = await userCollection.findOne({ _id: session.userId }); // userCollection, not usersCollection
+//         if (!user) {
+//             return res.status(401).json({ message: "unauthorized access" });
+//         }
+
+//         req.user = user;
+//         next();
+//     } catch (err) {
+//         console.error("verifyToken error:", err);
+//         res.status(500).json({ message: "auth check failed" });
+//     }
+// };
+
+
 const verifyToken = async (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ message: "unauthorized access" });
 
-    if (!token) {
-        return res.status(401).json({ message: "unauthorized access" });
-    }
+    const session = await sessionCollection.findOne({ token });
+    if (!session) return res.status(401).json({ message: "unauthorized access" });
 
-    try {
-        const session = await sessionCollection.findOne({ token });
-        if (!session) {
-            return res.status(401).json({ message: "unauthorized access" });
-        }
+    const user = await userCollection.findOne({
+        $or: [
+            { _id: session.userId },
+            { _id: new ObjectId(session.userId) },
+            { id: session.userId }
+        ]
+    });
 
-        const user = await userCollection.findOne({ _id: session.userId }); // userCollection, not usersCollection
-        if (!user) {
-            return res.status(401).json({ message: "unauthorized access" });
-        }
+    if (!user) return res.status(401).json({ message: "unauthorized access" });
+    if (user.role !== "admin") return res.status(403).json({ message: "forbidden access" });
 
-        req.user = user;
-        next();
-    } catch (err) {
-        console.error("verifyToken error:", err);
-        res.status(500).json({ message: "auth check failed" });
-    }
+    req.user = user;
+    next();
 };
+
 
 const verifyAdmin = async (req, res, next) => {
     if (req.user?.role !== 'admin') {
@@ -191,7 +216,6 @@ app.get('/analytics/overview', verifyToken, verifyAdmin, async (req, res) => {
         res.status(500).json({ success: false, message: 'Failed to fetch analytics' });
     }
 });
-
 
 // POST: Upload/Add new event/photo
 app.post('/gallery', verifyToken, verifyAdmin, async (req, res) => {
